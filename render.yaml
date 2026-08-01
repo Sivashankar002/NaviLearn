@@ -1,0 +1,41 @@
+services:
+  # LMS Node.js Express Backend Service
+  - type: web
+    name: navilearn-api
+    env: node
+    region: singapore
+    buildCommand: cd server && npm install
+    startCommand: cd server && node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+
+  # LMS React Vite Frontend Static Site
+  - type: web
+    name: navilearn-web
+    env: static
+    buildCommand: cd client && npm install && npm run build
+    staticPublishPath: client/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
