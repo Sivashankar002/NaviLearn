@@ -453,12 +453,12 @@ router.get('/:id/analytics', protect, authorize('Admin'), async (req, res) => {
 
       // Get modules the student must complete (excluding AI-skipped modules)
       const activeModules = enrollment.personalizedPath.filter(m => !m.shouldSkip);
-      
+
       // Get completion logs matching this student
       const studentLogs = progressLogs.filter(log => log.learner.toString() === student._id.toString());
-      
+
       // Match logs with active modules to see how many required modules they finished
-      const completedActiveCount = activeModules.filter(m => 
+      const completedActiveCount = activeModules.filter(m =>
         studentLogs.some(log => log.moduleId.toString() === m.moduleId.toString())
       ).length;
 
@@ -473,7 +473,7 @@ router.get('/:id/analytics', protect, authorize('Admin'), async (req, res) => {
         completedCount++;
       } else if (enrollment.status === 'Active') {
         // Find the first uncompleted module in their path to mark the drop-off point
-        const nextUncompletedModule = activeModules.find(m => 
+        const nextUncompletedModule = activeModules.find(m =>
           !studentLogs.some(log => log.moduleId.toString() === m.moduleId.toString())
         );
         if (nextUncompletedModule) {
