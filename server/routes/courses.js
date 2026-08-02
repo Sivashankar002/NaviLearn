@@ -85,7 +85,8 @@ eventBus.on('progressUpdated', ({ courseId }) => {
 const checkCourseOwnership = (course, user) => {
   // If user is Admin and course has a createdBy field, ensure IDs match
   if (user.role === 'Admin' && course.createdBy) {
-    return course.createdBy.toString() === user.id.toString();
+    const creatorId = course.createdBy._id ? course.createdBy._id.toString() : course.createdBy.toString();
+    return creatorId === user.id.toString();
   }
   return true; // If no createdBy set yet, allow owner
 };
