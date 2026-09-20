@@ -4,3 +4,11 @@ client/node_modules/
 client/dist/
 server/node_modules/
 server/.env
+
+# Temporary and local documentation files
+scratch/
+docs/
+implementation_plan.md
+walkthrough.md
+LMS_SPEC.pdf
+

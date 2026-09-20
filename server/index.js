@@ -59,6 +59,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'LMS Backend is running' });
 });
 
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'NaviLearn API Backend Server', health: '/api/health' });
+});
+
 // Start Server
 app.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
