@@ -75,39 +75,43 @@ const EnrollCourses = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {courses.map((course) => (
-            <div
-              key={course._id}
-              className="bg-white rounded-2xl border border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
-            >
-              <div className="p-6">
-                <div className="bg-indigo-50 text-indigo-700 font-semibold text-xs px-3 py-1 rounded-full w-max mb-4">
+          {courses.map((course) => {
+            const isEnrolling = enrollMutation.isPending && enrollMutation.variables === course._id;
 
+            return (
+              <div
+                key={course._id}
+                className="bg-white rounded-2xl border border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+              >
+                <div className="p-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{course.title}</h3>
+                  <p className="text-gray-500 text-sm line-clamp-3">{course.description}</p>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{course.title}</h3>
-                <p className="text-gray-500 text-sm line-clamp-3 mb-4">{course.description}</p>
 
-                <div className="flex items-center space-x-2 text-xs text-gray-400 font-medium">
-                  <span>Pass Threshold:</span>
-                  <span className="text-indigo-600 font-semibold">{course.masteryThreshold}%</span>
-                </div>
-              </div>
+                <div className="p-6 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                    {course.status}
+                  </span>
 
-              <div className="p-6 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                  {course.status}
-                </span>
-
-                {course.status === 'Not Enrolled' && (
-                  <button
-                    onClick={() => enrollMutation.mutate(course._id)}
-                    disabled={enrollMutation.isPending}
-                    className="flex items-center space-x-2 bg-indigo-600 text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    <span>{enrollMutation.isPending ? 'Enrolling...' : 'Enroll'}</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                )}
+                  {course.status === 'Not Enrolled' && (
+                    <button
+                      onClick={() => enrollMutation.mutate(course._id)}
+                      disabled={enrollMutation.isPending}
+                      className="flex items-center space-x-2 bg-indigo-600 text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {isEnrolling ? (
+                        <>
+                          <Loader className="animate-spin h-4 w-4 text-white" />
+                          <span>Enrolling...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Enroll</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </button>
+                  )}
 
                 {course.status === 'Onboarding' && (
                   <button
@@ -130,7 +134,8 @@ const EnrollCourses = () => {
                 )}
               </div>
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
     </div>

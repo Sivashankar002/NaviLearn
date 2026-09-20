@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
+import { LogIn, Mail, Lock, AlertCircle, Loader } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -96,9 +96,16 @@ const Login = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 cursor-pointer"
+              className="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 cursor-pointer"
             >
-              {submitting ? 'Signing in...' : 'Sign In'}
+              {submitting ? (
+                <div className="flex items-center space-x-2">
+                  <Loader className="animate-spin h-5 w-5 text-white" />
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </div>
         </form>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, User, Mail, Lock, AlertCircle } from 'lucide-react';
+import { UserPlus, User, Mail, Lock, AlertCircle, Loader } from 'lucide-react';
 
 const Register = () => {
   const [name, setName] = useState('');
@@ -116,9 +116,16 @@ const Register = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 cursor-pointer"
+              className="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 cursor-pointer"
             >
-              {submitting ? 'Creating account...' : 'Create Account'}
+              {submitting ? (
+                <div className="flex items-center space-x-2">
+                  <Loader className="animate-spin h-5 w-5 text-white" />
+                  <span>Creating account...</span>
+                </div>
+              ) : (
+                'Create Account'
+              )}
             </button>
           </div>
         </form>
