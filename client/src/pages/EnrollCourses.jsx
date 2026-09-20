@@ -97,7 +97,9 @@ const EnrollCourses = () => {
                     <button
                       onClick={() => enrollMutation.mutate(course._id)}
                       disabled={enrollMutation.isPending}
-                      className="flex items-center space-x-2 bg-indigo-600 text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
+                      className={`flex items-center space-x-2 bg-indigo-600 text-white font-semibold text-sm px-4 py-2 rounded-xl transition-all shadow-sm ${
+                        isEnrolling ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'
+                      }`}
                     >
                       {isEnrolling ? (
                         <>
