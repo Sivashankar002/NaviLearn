@@ -6,24 +6,31 @@ const logger = createChildLogger('GEMINI');
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
+const FALLBACK_MODEL_CHAIN = [
+  'gemini-1.5-flash',
+  'gemini-2.0-flash-exp',
+  'gemini-1.5-pro'
+];
+
 /**
  * Extracts and logs detailed diagnostic information from a Gemini API error.
  */
-const logGeminiErrorDetails = (error, attempt) => {
+const logGeminiErrorDetails = (error, attempt, modelName) => {
   logger.error({
+    model: modelName || 'unknown',
     attempt: attempt + 1,
     statusCode: error?.status || error?.httpStatusCode || 'N/A',
     message: error?.message || 'No message',
     errorCode: error?.code || error?.errorDetails?.[0]?.reason || 'N/A',
     details: error?.errorDetails || [],
     retryAfter: error?.headers?.['retry-after'] || error?.retryAfter || null
-  }, `[GEMINI ERROR] Attempt ${attempt + 1} failed`);
+  }, `[GEMINI ERROR] Attempt ${attempt + 1} failed for model ${modelName || 'unknown'}`);
 };
 
 /**
- * Retry wrapper with Token-Aware Backoff & Jitter for Gemini API rate limit (429) errors.
+ * Retry wrapper with Token-Aware Backoff & Jitter for Gemini API rate limit (429) & transient (503/5xx) errors.
  */
-const callWithRetry = async (fn, maxRetries = 5) => {
+const callWithRetry = async (fn, maxRetries = 1, modelName = '') => {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
@@ -38,20 +45,21 @@ const callWithRetry = async (fn, maxRetries = 5) => {
         error?.message?.toLowerCase().includes('service unavailable') ||
         error?.message?.toLowerCase().includes('high demand');
 
-      logGeminiErrorDetails(error, attempt);
+      logGeminiErrorDetails(error, attempt, modelName);
 
       if (isRetriable && attempt < maxRetries) {
-        const baseDelayMs = 4000 * (attempt + 1);
-        const jitterMs = Math.floor(Math.random() * 1000);
+        const baseDelayMs = 1500 * (attempt + 1);
+        const jitterMs = Math.floor(Math.random() * 300);
         const delayMs = baseDelayMs + jitterMs;
 
         logger.warn({
+          model: modelName,
           attempt: attempt + 1,
           maxRetries,
           delayMs,
           statusCode: error?.status || 'N/A',
           delaySeconds: (delayMs / 1000).toFixed(1)
-        }, `⏳ Gemini transient API error (${error?.status || '503/429'}). Retrying in ${(delayMs / 1000).toFixed(1)}s (Attempt ${attempt + 1}/${maxRetries})...`);
+        }, `⏳ Gemini transient error (${error?.status || '503/429'}) on ${modelName}. Retrying in ${(delayMs / 1000).toFixed(1)}s (Attempt ${attempt + 1}/${maxRetries})...`);
 
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
@@ -59,6 +67,33 @@ const callWithRetry = async (fn, maxRetries = 5) => {
       throw error;
     }
   }
+};
+
+/**
+ * Executes a Gemini prompt across a Dynamic Fallback Chain of models
+ * (gemini-1.5-flash -> gemini-2.0-flash-exp -> gemini-1.5-pro)
+ */
+const executeModelChainWithRetry = async (promptText, generationConfig = {}) => {
+  let lastError = null;
+
+  for (const modelName of FALLBACK_MODEL_CHAIN) {
+    try {
+      const modelConfig = { model: modelName };
+      if (Object.keys(generationConfig).length > 0) {
+        modelConfig.generationConfig = generationConfig;
+      }
+      const model = genAI.getGenerativeModel(modelConfig);
+
+      const result = await callWithRetry(() => model.generateContent(promptText), 1, modelName);
+      logger.info({ modelUsed: modelName }, `[Gemini AI] Successfully executed request using model: ${modelName}`);
+      return result;
+    } catch (err) {
+      lastError = err;
+      logger.warn({ failedModel: modelName, error: err.message }, `⚠️ Model ${modelName} unavailable. Failover to next model in fallback chain...`);
+    }
+  }
+
+  throw lastError || new Error('All models in Gemini fallback chain failed');
 };
 
 /**
@@ -75,13 +110,6 @@ const generatePersonalizedPath = async (courseTitle, modules, skillScores, maste
       console.warn("GEMINI_API_KEY is not defined or is placeholder. Initiating fallback learning path...");
       return generateFallbackPath(modules);
     }
-
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-flash-latest',
-      generationConfig: {
-        responseMimeType: 'application/json'
-      }
-    });
 
     const prompt = `
 You are an expert curriculum planner for the Adaptive Learning Management System "NaviLearn".
@@ -115,11 +143,7 @@ You MUST respond with a JSON object following this exact schema:
 }
 `;
 
-    const result = await callWithRetry(() => model.generateContent(prompt));
-    
-    // Log the dynamically chosen underlying model version for identification
-    console.log(`\n[Gemini AI] Successfully generated path using model: ${result.response.modelVersion || 'unknown'}\n`);
-    
+    const result = await executeModelChainWithRetry(prompt, { responseMimeType: 'application/json' });
     const textResponse = result.response.text();
     const parsedData = JSON.parse(textResponse);
 
@@ -150,7 +174,6 @@ const generateFallbackPath = (modules) => {
  */
 const generateWelcomeEmailText = async (learnerName, courseTitle, skillScores, masteryThreshold) => {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
     const prompt = `
 You are an encouraging learning coach at EdTech platform "NaviLearn".
 Write a personalized welcome email to a student who has just joined a course.
@@ -167,7 +190,7 @@ Instructions:
 4. Outline what module they should begin working on first based on the path.
 5. Keep it conversational, motivational, and under 250 words. Do not output subject lines or mail headers, just the email body text.
 `;
-    const result = await callWithRetry(() => model.generateContent(prompt));
+    const result = await executeModelChainWithRetry(prompt);
     return result.response.text().trim();
   } catch (error) {
     console.error('Gemini Welcome Email Generation error:', error);
@@ -175,18 +198,12 @@ Instructions:
   }
 };
 
-
 /**
  * Generate a weekly progress report email copy for a batch of students.
  * Takes an array of learner metadata objects.
  */
 const generateWeeklySummaryBatch = async (learnersBatch) => {
   try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-flash-latest',
-      generationConfig: { responseMimeType: 'application/json' }
-    });
-
     const prompt = `
 You are a learning coach at EdTech platform "NaviLearn".
 Your task is to write highly personalized weekly summary emails for a batch of students to keep them motivated.
@@ -211,7 +228,7 @@ You MUST return a JSON object containing an array for each learner following thi
   ]
 }
 `;
-    const result = await callWithRetry(() => model.generateContent(prompt));
+    const result = await executeModelChainWithRetry(prompt, { responseMimeType: 'application/json' });
     const parsedData = JSON.parse(result.response.text());
     
     if (parsedData && Array.isArray(parsedData.emails)) {
@@ -220,10 +237,10 @@ You MUST return a JSON object containing an array for each learner following thi
     throw new Error("Invalid output structure from Gemini Batch Generation");
   } catch (error) {
     console.error('Gemini Weekly Batch Email Generation error:', error);
-    // Fallback for the entire batch
+    // Instant Fallback Delivery for the entire batch
     return learnersBatch.map(learner => ({
       learnerId: learner.learnerId,
-      emailBody: `Hello ${learner.learnerName},\n\nHere is your weekly progress update for ${learner.courseTitle}. You have completed ${learner.completedTitles.length} modules recently. Keep up the momentum to finish the remaining modules!`
+      emailBody: `Hello ${learner.learnerName},\n\nHere is your weekly progress update for ${learner.courseTitle}. You have completed ${learner.completedTitles.length} modules recently (${learner.paceStatus}). Keep up the momentum to finish the remaining modules!`
     }));
   }
 };
