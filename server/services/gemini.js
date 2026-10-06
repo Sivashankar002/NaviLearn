@@ -6,11 +6,59 @@ const logger = createChildLogger('GEMINI');
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-const FALLBACK_MODEL_CHAIN = [
-  'gemini-1.5-flash',
-  'gemini-2.0-flash-exp',
-  'gemini-1.5-pro'
-];
+let cachedModels = null;
+let lastFetchTime = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in-memory cache TTL
+
+/**
+ * Dynamically queries Google Generative AI ListModels API to discover active models supporting generateContent
+ */
+const getActiveGeminiModels = async () => {
+  const now = Date.now();
+  if (cachedModels && (now - lastFetchTime) < CACHE_TTL_MS) {
+    return cachedModels;
+  }
+
+  const defaultModels = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-exp', 'gemini-1.5-pro-latest'];
+
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+      return defaultModels;
+    }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'ListModels API request returned non-OK status. Using fallback model list.');
+      return defaultModels;
+    }
+
+    const data = await response.json();
+    if (data && Array.isArray(data.models)) {
+      const liveModels = data.models
+        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+        .map(m => m.name.replace(/^models\//, ''));
+
+      if (liveModels.length > 0) {
+        // Sort preference: flash models first (fastest/cheapest), then pro models
+        liveModels.sort((a, b) => {
+          if (a.includes('flash') && !b.includes('flash')) return -1;
+          if (!a.includes('flash') && b.includes('flash')) return 1;
+          return 0;
+        });
+
+        cachedModels = liveModels;
+        lastFetchTime = now;
+        logger.info({ totalDiscovered: liveModels.length, topModels: liveModels.slice(0, 4) }, '✨ Dynamically discovered active Gemini models from Google API');
+        return liveModels;
+      }
+    }
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Failed to dynamically discover models from Google API. Using fallback model list.');
+  }
+
+  return defaultModels;
+};
 
 /**
  * Extracts and logs detailed diagnostic information from a Gemini API error.
@@ -71,12 +119,14 @@ const callWithRetry = async (fn, maxRetries = 1, modelName = '') => {
 
 /**
  * Executes a Gemini prompt across a Dynamic Fallback Chain of models
- * (gemini-1.5-flash -> gemini-2.0-flash-exp -> gemini-1.5-pro)
+ * discovered at runtime from Google API
  */
 const executeModelChainWithRetry = async (promptText, generationConfig = {}) => {
   let lastError = null;
+  const activeModels = await getActiveGeminiModels();
+  const modelsToTry = activeModels.slice(0, 4);
 
-  for (const modelName of FALLBACK_MODEL_CHAIN) {
+  for (const modelName of modelsToTry) {
     try {
       const modelConfig = { model: modelName };
       if (Object.keys(generationConfig).length > 0) {
@@ -89,6 +139,9 @@ const executeModelChainWithRetry = async (promptText, generationConfig = {}) => 
       return result;
     } catch (err) {
       lastError = err;
+      if (err?.status === 404 || err?.message?.includes('404')) {
+        cachedModels = null; // Invalidate cache on 404 model error
+      }
       logger.warn({ failedModel: modelName, error: err.message }, `⚠️ Model ${modelName} unavailable. Failover to next model in fallback chain...`);
     }
   }
