@@ -28,14 +28,19 @@ const callWithRetry = async (fn, maxRetries = 5) => {
     try {
       return await fn();
     } catch (error) {
-      const isRateLimit = error?.status === 429 ||
+      const isRetriable = error?.status === 429 ||
+        error?.status === 503 ||
+        (error?.status >= 500 && error?.status < 600) ||
         error?.message?.includes('429') ||
+        error?.message?.includes('503') ||
         error?.message?.toLowerCase().includes('too many requests') ||
-        error?.message?.toLowerCase().includes('resource has been exhausted');
+        error?.message?.toLowerCase().includes('resource has been exhausted') ||
+        error?.message?.toLowerCase().includes('service unavailable') ||
+        error?.message?.toLowerCase().includes('high demand');
 
       logGeminiErrorDetails(error, attempt);
 
-      if (isRateLimit && attempt < maxRetries) {
+      if (isRetriable && attempt < maxRetries) {
         const baseDelayMs = 4000 * (attempt + 1);
         const jitterMs = Math.floor(Math.random() * 1000);
         const delayMs = baseDelayMs + jitterMs;
@@ -44,8 +49,9 @@ const callWithRetry = async (fn, maxRetries = 5) => {
           attempt: attempt + 1,
           maxRetries,
           delayMs,
+          statusCode: error?.status || 'N/A',
           delaySeconds: (delayMs / 1000).toFixed(1)
-        }, `⏳ Gemini rate limit (429) hit. Retrying in ${(delayMs / 1000).toFixed(1)}s (Attempt ${attempt + 1}/${maxRetries})...`);
+        }, `⏳ Gemini transient API error (${error?.status || '503/429'}). Retrying in ${(delayMs / 1000).toFixed(1)}s (Attempt ${attempt + 1}/${maxRetries})...`);
 
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;

@@ -49,8 +49,10 @@ app.use('/api/courses', coursesRoutes);
 app.use('/api/learner', learnerRoutes);
 app.use('/api/logs', logsRoutes);
 
-// Health Check Route
+// Health Check & Trigger Routes
 const path = require('path');
+const { runWeeklyEmailsJob } = require('./services/cron');
+
 app.get('/test-embed', (req, res) => {
   res.sendFile(path.resolve(__dirname, '../scratch/test_embed.html'));
 });
@@ -61,6 +63,17 @@ app.get('/api/health', (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'NaviLearn API Backend Server', health: '/api/health' });
+});
+
+// External Cron Webhook Endpoint (Can be triggered by cron-job.org or manually)
+app.all('/api/cron/weekly-summary', async (req, res) => {
+  try {
+    logger.info('Received HTTP trigger for Weekly Summary Emails job');
+    const results = await runWeeklyEmailsJob();
+    res.json({ success: true, message: 'Weekly progress summary emails triggered successfully', results });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Start Server
